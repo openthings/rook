@@ -1,0 +1,16 @@
+apiVersion: v1
+data:
+  check_mgr.sh: |2
+    #!/bin/bash
+    set -ex
+    export LC_ALL=C
+    IS_MGR_AVAIL=`ceph mgr dump | python -c "import json, sys; print json.load(sys.stdin)['available']"`
+    if [ "${IS_MGR_AVAIL}" = True ]; then
+      exit 0
+    else
+      exit 1
+    fi
+kind: ConfigMap
+metadata:
+  name: checkmgr
+  namespace: rook-ceph

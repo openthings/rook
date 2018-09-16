@@ -1,0 +1,123 @@
+#https://github.com/ceph/ceph-container/issues/844
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: ceph
+    daemon: mgr
+  name: ceph-mgr
+  namespace: rook-ceph
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ceph
+      daemon: mgr
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        scheduler.alpha.kubernetes.io/affinity: |
+          {
+            "podAntiAffinity": {
+              "RequiredDuringSchedulingIgnoredDuringExecution": [{
+                "labelSelector": {
+                  "matchExpressions": [{
+                    "key": "daemon",
+                    "operator": "In",
+                    "values":["mon"]
+                  }]
+                },
+              "topologyKey": "kubernetes.io/hostname"
+              }]
+            }
+          }
+      labels:
+        app: ceph
+        daemon: mgr
+      name: ceph-mgr
+      namespace: ceph
+    spec:
+      containers:
+      - command:
+        - /scripts/resolvfix.sh
+        env:
+        - name: CEPH_DAEMON
+          value: MGR
+        - name: KV_TYPE
+          value: k8s
+        - name: NETWORK_AUTO_DETECT
+          value: "4"
+        - name: CLUSTER
+          value: ceph
+        image: ceph/daemon:latest
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - bash
+            - /check_mgr.sh
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: ceph-mgr
+        readinessProbe:
+          exec:
+            command:
+            - bash
+            - /check_mgr.sh
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "2"
+            memory: 100Mi
+          requests:
+            cpu: "1"
+            memory: 50Mi
+        terminationMessagePath: /dev/termination-log
+        volumeMounts:
+        - mountPath: /etc/ceph
+          name: ceph-conf
+        - mountPath: /var/lib/ceph/bootstrap-mgr
+          name: ceph-bootstrap-mgr-keyring
+        - mountPath: /scripts
+          name: resolvefix
+        - mountPath: /check_mgr.sh
+          name: checkmgr
+          subPath: check_mgr.sh
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      nodeSelector:
+        cephosd: enable
+      restartPolicy: Always
+      securityContext: {}
+      serviceAccount: default
+      serviceAccountName: default
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: ceph-conf
+        secret:
+          defaultMode: 420
+          secretName: ceph-conf-combined
+      - name: ceph-bootstrap-mgr-keyring
+        secret:
+          defaultMode: 420
+          secretName: ceph-bootstrap-mgr-keyring
+      - configMap:
+          defaultMode: 0744
+          name: resolvescript
+        name: resolvefix
+      - configMap:
+          defaultMode: 0744
+          name: checkmgr
+        name: checkmgr
